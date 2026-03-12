@@ -1,0 +1,121 @@
+name: Spring Boot CI/CD (Generic and Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      app_name:
+        required: true
+        type: string
+      registry_image:
+        required: false
+        type: string
+        default: ""        # sera calculé automatiquement si vide
+      java_version:
+        required: false
+        type: string
+        default: "21"
+    secrets:
+      SONAR_TOKEN:
+        required: true
+      SONAR_HOST_URL:
+        required: true
+      PERSONAL_ACCESS_TOKEN:
+        required: true
+      REGISTRY_NAMESPACE:
+        required: true
+      SSH_PRIVATE_KEY:
+        required: true
+      REMOTE_USER:
+        required: true
+      REMOTE_HOST:
+        required: true
+      DEPLOY_DELAY:
+        required: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ inputs.java_version }}
+
+      - name: Run Unit Tests + SonarQube Analysis
+        continue-on-error: true
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          mvn clean verify sonar:sonar \
+            -Dsonar.projectKey=${{ inputs.app_name }} \
+            -Dsonar.projectName=${{ inputs.app_name }} \
+            -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}
+
+  build:
+    needs: tests
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set registry image name
+        id: vars
+        run: |
+          IMAGE="${{ inputs.registry_image }}"
+          if [ -z "$IMAGE" ]; then
+            IMAGE="ghcr.io/${{ github.repository_owner }}/${{ inputs.app_name }}"
+          fi
+          echo "registry_image=$IMAGE" >> $GITHUB_OUTPUT
+
+      - name: Log in to GitHub Container Registry
+        run: |
+          echo "${{ secrets.PERSONAL_ACCESS_TOKEN }}" | docker login ghcr.io \
+            -u ${{ secrets.REGISTRY_NAMESPACE }} --password-stdin
+
+      - name: Build and Push Docker image
+        run: |
+          docker build -t ${{ steps.vars.outputs.registry_image }}:latest .
+          docker push ${{ steps.vars.outputs.registry_image }}:latest
+
+    outputs:
+      registry_image: ${{ steps.vars.outputs.registry_image }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Add SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Deploy on server
+        env:
+          REGISTRY_IMAGE: ${{ needs.build.outputs.registry_image }}
+          CONTAINER_NAME: ${{ inputs.app_name }}
+          HEALTH_DELAY: ${{ secrets.DEPLOY_DELAY }}
+        run: |
+          ssh -o StrictHostKeyChecking=no \
+            ${{ secrets.REMOTE_USER }}@${{ secrets.REMOTE_HOST }} << EOF
+            docker login ghcr.io -u ${{ secrets.REGISTRY_NAMESPACE }} \
+              -p ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+            cd /home/${{ secrets.REMOTE_USER }}/yowyob/backend
+            docker compose down ${CONTAINER_NAME}
+            docker rmi -f ${REGISTRY_IMAGE}:latest || true
+            docker pull ${REGISTRY_IMAGE}:latest
+            docker compose up -d ${CONTAINER_NAME}
+            sleep ${HEALTH_DELAY}
+            STATUS=\$(docker inspect --format='{{json .State.Health.Status}}' ${CONTAINER_NAME})
+            echo "Health status: \$STATUS"
+            if [ "\$STATUS" != '"healthy"' ]; then
+              echo "ERROR: Container is not healthy"
+              exit 1
+            fi
+            echo "Deployment successful!"
+          EOF
