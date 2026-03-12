@@ -16,21 +16,21 @@ on:
         default: "21"
     secrets:
       SONAR_TOKEN:
-        required: true
+        required: false
       SONAR_HOST_URL:
-        required: true
+        required: false
       PERSONAL_ACCESS_TOKEN:
-        required: true
+        required: false
       REGISTRY_NAMESPACE:
-        required: true
+        required: false
       SSH_PRIVATE_KEY:
-        required: true
+        required: false
       REMOTE_USER:
-        required: true
+        required: false
       REMOTE_HOST:
-        required: true
+        required: false
       DEPLOY_DELAY:
-        required: true
+        required: false
 
 jobs:
   tests:
