@@ -77,6 +77,34 @@ jobs:
           echo "${{ secrets.PERSONAL_ACCESS_TOKEN }}" | docker login ghcr.io \
             -u ${{ secrets.REGISTRY_NAMESPACE }} --password-stdin
 
+      - name: Use prod application config (if exists)
+        run: |
+          RESOURCES="src/main/resources"
+      
+          # Cherche prod.application.yml ou prod.application.properties
+          if [ -f "$RESOURCES/prod.application.yml" ]; then
+            PROD_FILE="$RESOURCES/prod.application.yml"
+            TARGET="$RESOURCES/application.yml"
+            # Supprime l'éventuel application.properties concurrent
+            rm -f "$RESOURCES/application.properties"
+      
+          elif [ -f "$RESOURCES/prod.application.properties" ]; then
+            PROD_FILE="$RESOURCES/prod.application.properties"
+            TARGET="$RESOURCES/application.properties"
+            # Supprime l'éventuel application.yml concurrent
+            rm -f "$RESOURCES/application.yml"
+      
+          else
+            echo "No prod.application.* file found — keeping existing config as-is"
+            exit 0
+          fi
+      
+          echo "Found: $PROD_FILE → replacing $(basename $TARGET)"
+          rm -f "$TARGET"
+          mv "$PROD_FILE" "$TARGET"
+          echo "Active config:"
+          cat "$TARGET"
+
       - name: Build and Push Docker image
         run: |
           docker build -t ${{ steps.vars.outputs.registry_image }}:latest .
