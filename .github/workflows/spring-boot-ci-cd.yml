@@ -103,15 +103,15 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no \
             ${{ secrets.REMOTE_USER }}@${{ secrets.REMOTE_HOST }} << EOF
-            docker login ghcr.io -u ${{ secrets.REGISTRY_NAMESPACE }} \
+            sudo docker login ghcr.io -u ${{ secrets.REGISTRY_NAMESPACE }} \
               -p ${{ secrets.PERSONAL_ACCESS_TOKEN }}
             cd /home/${{ secrets.REMOTE_USER }}/yowyob/backend
-            docker compose down ${CONTAINER_NAME}
-            docker rmi -f ${REGISTRY_IMAGE}:latest || true
-            docker pull ${REGISTRY_IMAGE}:latest
-            docker compose up -d ${CONTAINER_NAME}
+            sudo docker compose down ${CONTAINER_NAME}
+            sudo docker rmi -f ${REGISTRY_IMAGE}:latest || true
+            sudo docker pull ${REGISTRY_IMAGE}:latest
+            sudo docker compose up -d ${CONTAINER_NAME}
             sleep ${HEALTH_DELAY}
-            STATUS=\$(docker inspect --format='{{json .State.Health.Status}}' ${CONTAINER_NAME})
+            STATUS=\$(sudo docker inspect --format='{{json .State.Health.Status}}' ${CONTAINER_NAME})
             echo "Health status: \$STATUS"
             if [ "\$STATUS" != '"healthy"' ]; then
               echo "ERROR: Container is not healthy"
