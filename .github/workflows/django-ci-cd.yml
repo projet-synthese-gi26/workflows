@@ -30,12 +30,6 @@ on:
       DEPLOY_DELAY:
         required: false
 
-env:
-  REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/fare-calculator-service
-  APP_NAME: fare-calculator-service
-  HEALTH_DELAY: ${{ secrets.DEPLOY_DELAY }}
-  CONTAINER_NAME: fare-calculator-service
-
 jobs:
   tests:
     runs-on: ubuntu-latest
