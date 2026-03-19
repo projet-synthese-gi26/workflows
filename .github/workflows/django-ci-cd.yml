@@ -1,10 +1,34 @@
 name: Django CI/CD
 
+name: Spring Boot CI/CD (Generic and Reusable)
+
 on:
-  push:
-    branches:
-      - "**"
-      #- main
+  workflow_call:
+    inputs:
+      app_name:
+        required: true
+        type: string
+      registry_image:
+        required: false
+        type: string
+        default: ""        # sera calculé automatiquement si vide
+    secrets:
+      SONAR_TOKEN:
+        required: false
+      SONAR_HOST_URL:
+        required: false
+      PERSONAL_ACCESS_TOKEN:
+        required: false
+      REGISTRY_NAMESPACE:
+        required: false
+      SSH_PRIVATE_KEY:
+        required: false
+      REMOTE_USER:
+        required: false
+      REMOTE_HOST:
+        required: false
+      DEPLOY_DELAY:
+        required: false
 
 env:
   REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/fare-calculator-service
