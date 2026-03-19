@@ -1,4 +1,4 @@
-name: Django CI/CD
+name: Django CI/CD (Generic and Reusable)
 
 on:
   workflow_call:
@@ -9,7 +9,7 @@ on:
       registry_image:
         required: false
         type: string
-        default: ""        # sera calculé automatiquement si vide
+        default: ""
     secrets:
       SONAR_TOKEN:
         required: false
@@ -33,38 +33,41 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v2
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: "3.11"
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Apply Migration
-        #continue-on-error: true
+      - name: Run migrations
+        continue-on-error: true
         run: |
           python manage.py makemigrations --merge --noinput
           python manage.py migrate
 
-      - name: Run Tests
-        #continue-on-error: true
+      - name: Run tests (+ Sonar optional)
+        continue-on-error: true
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
           python manage.py test
+          # Ajoute sonar ici si besoin (ex: sonar-scanner)
 
   build:
     needs: tests
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set registry image name
         id: vars
@@ -77,78 +80,67 @@ jobs:
 
       - name: Log in to GitHub Container Registry
         run: |
-          echo "${{ secrets.PERSONAL_ACCESS_TOKEN }}" | docker login ghcr.io -u ${{ secrets.REGISTRY_NAMESPACE }} --password-stdin
-
-      - name: Build Docker image
+          echo "${{ secrets.PERSONAL_ACCESS_TOKEN }}" | docker login ghcr.io \
+            -u ${{ secrets.REGISTRY_NAMESPACE }} --password-stdin
+            
+      - name: Build and Push Docker image
         run: |
-          echo "Building Docker image..."
-          docker build -t ${{ env.REGISTRY_IMAGE }}:latest .
+          docker build -t ${{ steps.vars.outputs.registry_image }}:latest .
+          docker push ${{ steps.vars.outputs.registry_image }}:latest
 
-      - name: Push Docker image
-        run: |
-          echo "Pushing Docker image..."
-          docker push ${{ env.REGISTRY_IMAGE }}:latest
+    outputs:
+      registry_image: ${{ steps.vars.outputs.registry_image }}
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
       - name: Add SSH key
-        uses: webfactory/ssh-agent@v0.7.0
+        uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
       - name: Deploy on server
+        env:
+          REGISTRY_IMAGE: ${{ needs.build.outputs.registry_image }}
+          CONTAINER_NAME: ${{ inputs.app_name }}
+          HEALTH_DELAY: ${{ secrets.DEPLOY_DELAY }}
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.REMOTE_USER }}@${{ secrets.REMOTE_HOST }} << 'EOF'
+          ssh -o StrictHostKeyChecking=no \
+            ${{ secrets.REMOTE_USER }}@${{ secrets.REMOTE_HOST }} << EOF
 
-            echo "Pulling latest image ${{ env.REGISTRY_IMAGE }}"
-
-            sudo docker login ghcr.io -u ${{ secrets.REGISTRY_NAMESPACE }} -p ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+            echo "Login to registry"
+            sudo docker login ghcr.io -u ${{ secrets.REGISTRY_NAMESPACE }} \
+              -p ${{ secrets.PERSONAL_ACCESS_TOKEN }}
 
             cd /home/${{ secrets.REMOTE_USER }}/yowyob/backend
 
-            echo "Stopping fare-calculator services"
-            sudo docker compose down fare-calculator-migrate fare-calculator-service celery_worker celery_beat
+            echo "Stopping container ${CONTAINER_NAME}"
+            sudo docker compose down ${CONTAINER_NAME}
 
             echo "Removing old image"
-            sudo docker rmi -f ${{ env.REGISTRY_IMAGE }}:latest || true
+            sudo docker rmi -f ${REGISTRY_IMAGE}:latest || true
 
             echo "Pulling new image"
-            sudo docker pull ${{ env.REGISTRY_IMAGE }}:latest
+            sudo docker pull ${REGISTRY_IMAGE}:latest
 
-            echo "Starting fare-calculator services"
-            sudo docker compose up -d fare-calculator-migrate fare-calculator-service celery_worker celery_beat
+            echo "Starting container"
+            sudo docker compose up -d ${CONTAINER_NAME}
 
-            echo "Waiting ${{ env.HEALTH_DELAY }} seconds for health check"
-            sleep ${{ env.HEALTH_DELAY }}
+            echo "Waiting ${HEALTH_DELAY}s"
+            sleep ${HEALTH_DELAY}
 
-            echo "Checking container health..."
-            STATUS=$(sudo docker inspect --format='{{json .State.Health.Status}}' ${{ env.CONTAINER_NAME }} 2>/dev/null || echo '"starting"')
+            STATUS=\$(sudo docker inspect --format='{{json .State.Health.Status}}' ${CONTAINER_NAME} 2>/dev/null || echo '"starting"')
 
-            echo "Health status: $STATUS"
+            echo "Health status: \$STATUS"
 
-            if [ "$STATUS" != "\"healthy\"" ]; then
-              echo "WARNING: Container may still be starting. Showing logs..."
-              sudo docker logs ${{ env.CONTAINER_NAME }} --tail 30 || true
-              
-              # Retry health check
-              echo "Waiting 30 more seconds..."
-              sleep 30
-              STATUS=$(sudo docker inspect --format='{{json .State.Health.Status}}' ${{ env.CONTAINER_NAME }} 2>/dev/null || echo '"unknown"')
-              echo "Final health status: $STATUS"
-              
-              if [ "$STATUS" != "\"healthy\"" ]; then
-                echo "ERROR: Container is not healthy after extended wait"
-                sudo docker logs ${{ env.CONTAINER_NAME }} --tail 50 || true
-                exit 1
-              fi
+            if [ "\$STATUS" != '"healthy"' ]; then
+              echo "ERROR: Container is not healthy"
+              sudo docker logs ${CONTAINER_NAME} --tail 50 || true
+              exit 1
             fi
 
-            echo "Deployment successful & container healthy!"
+            echo "Deployment successful!"
           EOF
