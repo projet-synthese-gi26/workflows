@@ -1,4 +1,4 @@
-name: Spring Boot CI/CD (Generic and Reusable)
+name: Django CI/CD (Generic and Reusable)
 
 on:
   workflow_call:
@@ -9,11 +9,7 @@ on:
       registry_image:
         required: false
         type: string
-        default: ""        # sera calculé automatiquement si vide
-      java_version:
-        required: false
-        type: string
-        default: "21"
+        default: ""
     secrets:
       SONAR_TOKEN:
         required: false
@@ -35,30 +31,40 @@ on:
 jobs:
   tests:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up JDK
-        uses: actions/setup-java@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          distribution: 'temurin'
-          java-version: ${{ inputs.java_version }}
+          python-version: "3.11"
 
-      - name: Run Unit Tests + SonarQube Analysis
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run migrations
+        continue-on-error: true
+        run: |
+          python manage.py makemigrations --merge --noinput
+          python manage.py migrate
+
+      - name: Run tests (+ Sonar optional)
         continue-on-error: true
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
-          mvn clean verify sonar:sonar \
-            -Dsonar.projectKey=${{ inputs.app_name }} \
-            -Dsonar.projectName=${{ inputs.app_name }} \
-            -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}
+          python manage.py test
+          # Ajoute sonar ici si besoin (ex: sonar-scanner)
 
   build:
     needs: tests
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -77,34 +83,6 @@ jobs:
           echo "${{ secrets.PERSONAL_ACCESS_TOKEN }}" | docker login ghcr.io \
             -u ${{ secrets.REGISTRY_NAMESPACE }} --password-stdin
 
-      - name: Use prod application config (if exists)
-        run: |
-          RESOURCES="src/main/resources"
-      
-          # Cherche prod.application.yml ou prod.application.properties
-          if [ -f "$RESOURCES/prod.application.yml" ]; then
-            PROD_FILE="$RESOURCES/prod.application.yml"
-            TARGET="$RESOURCES/application.yml"
-            # Supprime l'éventuel application.properties concurrent
-            rm -f "$RESOURCES/application.properties"
-      
-          elif [ -f "$RESOURCES/prod.application.properties" ]; then
-            PROD_FILE="$RESOURCES/prod.application.properties"
-            TARGET="$RESOURCES/application.properties"
-            # Supprime l'éventuel application.yml concurrent
-            rm -f "$RESOURCES/application.yml"
-      
-          else
-            echo "No prod.application.* file found — keeping existing config as-is"
-            exit 0
-          fi
-      
-          echo "Found: $PROD_FILE → replacing $(basename $TARGET)"
-          rm -f "$TARGET"
-          mv "$PROD_FILE" "$TARGET"
-          echo "Active config:"
-          cat "$TARGET"
-
       - name: Build and Push Docker image
         run: |
           docker build -t ${{ steps.vars.outputs.registry_image }}:latest .
@@ -117,6 +95,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+
     steps:
       - name: Add SSH key
         uses: webfactory/ssh-agent@v0.9.0
@@ -131,19 +110,37 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no \
             ${{ secrets.REMOTE_USER }}@${{ secrets.REMOTE_HOST }} << EOF
+
+            echo "Login to registry"
             sudo docker login ghcr.io -u ${{ secrets.REGISTRY_NAMESPACE }} \
               -p ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+
             cd /home/${{ secrets.REMOTE_USER }}/yowyob/backend
+
+            echo "Stopping container ${CONTAINER_NAME}"
             sudo docker compose down ${CONTAINER_NAME}
+
+            echo "Removing old image"
             sudo docker rmi -f ${REGISTRY_IMAGE}:latest || true
+
+            echo "Pulling new image"
             sudo docker pull ${REGISTRY_IMAGE}:latest
+
+            echo "Starting container"
             sudo docker compose up -d ${CONTAINER_NAME}
+
+            echo "Waiting ${HEALTH_DELAY}s"
             sleep ${HEALTH_DELAY}
-            STATUS=\$(sudo docker inspect --format='{{json .State.Health.Status}}' ${CONTAINER_NAME})
+
+            STATUS=\$(sudo docker inspect --format='{{json .State.Health.Status}}' ${CONTAINER_NAME} 2>/dev/null || echo '"starting"')
+
             echo "Health status: \$STATUS"
+
             if [ "\$STATUS" != '"healthy"' ]; then
               echo "ERROR: Container is not healthy"
+              sudo docker logs ${CONTAINER_NAME} --tail 50 || true
               exit 1
             fi
+
             echo "Deployment successful!"
           EOF
