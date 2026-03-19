@@ -128,7 +128,7 @@ jobs:
 
             if [ "$STATUS" != "\"healthy\"" ]; then
               echo "WARNING: Container may still be starting. Showing logs..."
-              docker logs ${{ env.CONTAINER_NAME }} --tail 30 || true
+              sudo docker logs ${{ env.CONTAINER_NAME }} --tail 30 || true
               
               # Retry health check
               echo "Waiting 30 more seconds..."
@@ -138,7 +138,7 @@ jobs:
               
               if [ "$STATUS" != "\"healthy\"" ]; then
                 echo "ERROR: Container is not healthy after extended wait"
-                docker logs ${{ env.CONTAINER_NAME }} --tail 50 || true
+                sudo docker logs ${{ env.CONTAINER_NAME }} --tail 50 || true
                 exit 1
               fi
             fi
