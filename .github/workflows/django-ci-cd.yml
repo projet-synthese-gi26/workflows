@@ -1,7 +1,5 @@
 name: Django CI/CD
 
-name: Spring Boot CI/CD (Generic and Reusable)
-
 on:
   workflow_call:
     inputs:
