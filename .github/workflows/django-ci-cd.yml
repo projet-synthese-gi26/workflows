@@ -84,27 +84,27 @@ jobs:
 
             echo "Pulling latest image ${{ env.REGISTRY_IMAGE }}"
 
-            docker login ghcr.io -u ${{ secrets.REGISTRY_NAMESPACE }} -p ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+            sudo docker login ghcr.io -u ${{ secrets.REGISTRY_NAMESPACE }} -p ${{ secrets.PERSONAL_ACCESS_TOKEN }}
 
-            cd /root/projet_synthese/infra
+            cd /home/${{ secrets.REMOTE_USER }}/yowyob/backend
 
             echo "Stopping fare-calculator services"
-            docker compose down fare-calculator-service celery_worker celery_beat
+            sudo docker compose down fare-calculator-migrate fare-calculator-service celery_worker celery_beat
 
             echo "Removing old image"
-            docker rmi -f ${{ env.REGISTRY_IMAGE }}:latest || true
+            sudo docker rmi -f ${{ env.REGISTRY_IMAGE }}:latest || true
 
             echo "Pulling new image"
-            docker pull ${{ env.REGISTRY_IMAGE }}:latest
+            sudo docker pull ${{ env.REGISTRY_IMAGE }}:latest
 
             echo "Starting fare-calculator services"
-            docker compose up -d fare-calculator-service celery_worker celery_beat
+            sudo docker compose up -d fare-calculator-migrate fare-calculator-service celery_worker celery_beat
 
             echo "Waiting ${{ env.HEALTH_DELAY }} seconds for health check"
             sleep ${{ env.HEALTH_DELAY }}
 
             echo "Checking container health..."
-            STATUS=$(docker inspect --format='{{json .State.Health.Status}}' ${{ env.CONTAINER_NAME }} 2>/dev/null || echo '"starting"')
+            STATUS=$(sudo docker inspect --format='{{json .State.Health.Status}}' ${{ env.CONTAINER_NAME }} 2>/dev/null || echo '"starting"')
 
             echo "Health status: $STATUS"
 
@@ -115,7 +115,7 @@ jobs:
               # Retry health check
               echo "Waiting 30 more seconds..."
               sleep 30
-              STATUS=$(docker inspect --format='{{json .State.Health.Status}}' ${{ env.CONTAINER_NAME }} 2>/dev/null || echo '"unknown"')
+              STATUS=$(sudo docker inspect --format='{{json .State.Health.Status}}' ${{ env.CONTAINER_NAME }} 2>/dev/null || echo '"unknown"')
               echo "Final health status: $STATUS"
               
               if [ "$STATUS" != "\"healthy\"" ]; then
