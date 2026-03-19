@@ -66,6 +66,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Set registry image name
+        id: vars
+        run: |
+          IMAGE="${{ inputs.registry_image }}"
+          if [ -z "$IMAGE" ]; then
+            IMAGE="ghcr.io/${{ github.repository_owner }}/${{ inputs.app_name }}"
+          fi
+          echo "registry_image=$IMAGE" >> $GITHUB_OUTPUT
+
       - name: Log in to GitHub Container Registry
         run: |
           echo "${{ secrets.PERSONAL_ACCESS_TOKEN }}" | docker login ghcr.io -u ${{ secrets.REGISTRY_NAMESPACE }} --password-stdin
