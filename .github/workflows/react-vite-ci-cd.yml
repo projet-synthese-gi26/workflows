@@ -151,8 +151,8 @@ jobs:
           push: true
           tags: ${{ steps.vars.outputs.registry_image }}:latest
           # Cache GitHub Actions pour accélérer les builds
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          #cache-from: type=gha
+          #cache-to: type=gha,mode=max
           # Injection des VITE_* comme build-args Docker
           build-args: |
             VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }}
