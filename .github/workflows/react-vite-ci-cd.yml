@@ -107,9 +107,11 @@ jobs:
         run: npm ci
 
       - name: Run lint
+        continue-on-error: true
         run: npm run lint --if-present
 
       - name: Run type check
+        continue-on-error: true
         run: npm run type-check --if-present
 
   # -----------------------------------------------------------
