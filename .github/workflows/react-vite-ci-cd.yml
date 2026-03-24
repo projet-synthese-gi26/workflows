@@ -31,11 +31,18 @@ on:
     # SECRETS : transmis explicitement par le workflow projet
     # -------------------------------------------------------
     secrets:
-      REGISTRY_USERNAME:
+      PERSONAL_ACCESS_TOKEN:
         required: true
-      REGISTRY_PASSWORD:
+      REGISTRY_NAMESPACE:
         required: true
-
+      SSH_PRIVATE_KEY:
+        required: false
+      REMOTE_USER:
+        required: false
+      REMOTE_HOST:
+        required: false
+      DEPLOY_DELAY:
+        required: false
       # Variables d'environnement Vite (toutes optionnelles
       # selon les besoins du projet)
       VITE_API_BASE_URL:
