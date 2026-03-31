@@ -131,8 +131,7 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no \
             ${{ secrets.REMOTE_USER }}@${{ secrets.REMOTE_HOST }} << EOF
-            sudo docker login ghcr.io -u ${{ secrets.REGISTRY_NAMESPACE }} \
-              -p ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+            sudo echo ${{ secrets.PERSONAL_ACCESS_TOKEN }} | docker login ghcr.io -u ${{ secrets.REGISTRY_NAMESPACE }} --password-stdin
             cd /home/${{ secrets.REMOTE_USER }}/yowyob/backend
             sudo docker compose down ${CONTAINER_NAME}
             sudo docker rmi -f ${REGISTRY_IMAGE}:latest || true
