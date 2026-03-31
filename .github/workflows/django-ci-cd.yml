@@ -117,8 +117,8 @@ jobs:
 
             echo "Pulling latest image ${{ env.REGISTRY_IMAGE }}"
 
-            sudo docker login ghcr.io -u ${{ secrets.REGISTRY_NAMESPACE }} -p ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-
+            sudo echo ${{ secrets.PERSONAL_ACCESS_TOKEN }} | docker login ghcr.io -u ${{ secrets.REGISTRY_NAMESPACE }} --password-stdin
+            
             cd /home/${{ secrets.REMOTE_USER }}/yowyob/backend
 
             echo "Stopping fare-calculator services"
