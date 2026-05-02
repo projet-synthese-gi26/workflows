@@ -45,6 +45,8 @@ on:
         required: false
       # Variables d'environnement Vite (toutes optionnelles
       # selon les besoins du projet)
+      VITE_API_URL:
+        required: false
       VITE_API_BASE_URL:
         required: false
       VITE_API_KEY:
