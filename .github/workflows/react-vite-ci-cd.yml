@@ -157,6 +157,7 @@ jobs:
           #cache-to: type=gha,mode=max
           # Injection des VITE_* comme build-args Docker
           build-args: |
+            VITE_API_URL=${{ secrets.VITE_API_URL }}
             VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }}
             VITE_API_KEY=${{ secrets.VITE_API_KEY }}
             VITE_MAPBOX_TOKEN=${{ secrets.VITE_MAPBOX_TOKEN }}
